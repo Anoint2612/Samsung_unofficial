@@ -1,51 +1,57 @@
-# install the library (Command for Windows Terminal)
-# pip install sounddevice scipy transformers speechbrain
+import speech_recognition as sr
 from pydub import AudioSegment
 import os
-from speechbrain.pretrained import EncoderClassifier
 
-# Function to convert mp3/mp4 to wav
-def convert_to_wav(input_file, output_file='output.wav'):
-    audio = AudioSegment.from_file(input_file)
-    audio.export(output_file, format='wav')
-    print(f"Converted {input_file} to {output_file}")
-    # return output_file
+def process_audio(audio_file, output_dir):
+    """
+    Processes an audio file and saves it to the output directory if it contains human voice.
 
-# Function to analyze if the audio contains human speech
+    Args:
+        audio_file (str): Path to the audio file.
+        output_dir (str): Path to the output directory.
+    """
+    # Determine file format based on extension
+    file_extension = os.path.splitext(audio_file)[1].lower()
+    audio_format = "mp3" if file_extension == ".mp3" else "mp4"
 
-def analyze_human_voice(file_name='output.wav'):
-    # Load a pre-trained model for speaker recognition
-    classifier = EncoderClassifier.from_hparams(source="speechbrain/spkrec-xvect-voxceleb")
-    
-    # Run the model on the WAV file
-    signal = classifier.load_audio(file_name)
-    prediction = classifier.classify_batch(signal)
-    
-    # Get predicted label
-    predicted_label = prediction[3]  # This will contain the predicted label information
-    print(f"Predicted label: {predicted_label}")
-    
-    # Return True if human speech is detected, else False
-    # This can be customized based on what labels the model returns
-    return "human" in predicted_label
+    # Load audio using the appropriate method
+    try:
+        sound = AudioSegment.from_file(audio_file, format=audio_format)
+    except Exception as e:
+        print(f"Error loading audio file: {e}")
+        return  # Exit the function if loading fails
 
-# Main process
-def process_audio(input_file):
-    # Step 1: Convert input mp3/mp4 to wav
-    wav_file = convert_to_wav(input_file)
-    
-    # Step 2: Analyze the converted WAV file for human voice
-    is_human = analyze_human_voice(wav_file)
-    
-    if is_human:
-        print(f"{input_file} contains human voice.")
-    else:
-        print(f"{input_file} does NOT contain human voice.")
-        
-    return is_human
+    temp_wav_file = "temp.wav"  # Use a temporary file for processing
+    sound.export(temp_wav_file, format="wav")
 
-# Example usage
+    recognizer = sr.Recognizer()
+
+    with sr.AudioFile(temp_wav_file) as source:
+        audio = recognizer.record(source)
+
+    try:
+        recognizer.recognize_google(audio)  # Attempt speech recognition
+
+        # If speech is recognized, save the original file to the output directory
+        output_file = os.path.join(output_dir, os.path.basename(audio_file))
+        os.rename(audio_file, output_file)  # Move the original file to the output directory
+        print(f"Human voice detected in {audio_file}. Saved to {output_file}")
+
+    except sr.UnknownValueError:
+        print(f"No human voice detected in {audio_file}. File rejected.")
+        os.remove(temp_wav_file)  # Remove the temporary WAV file
+    except sr.RequestError:
+        print(f"Could not request results from Google Speech Recognition service for {audio_file}. File rejected.")
+        os.remove(temp_wav_file)  # Remove the temporary WAV file
+    except Exception as e:
+        print(f"An error occurred during processing: {e}")
+        os.remove(temp_wav_file)
+
 if __name__ == "__main__":
-    input_audio_file = 'example.mp3'  # Replace with your file (mp3 or mp4)
-    process_audio(input_audio_file)
+    audio_file = "/content/voice.mp3"  # Replace with your audio file path
+    output_dir = "/content/output"  # Replace with your desired output directory
 
+    # Create the output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+
+    process_audio(audio_file, output_dir)
